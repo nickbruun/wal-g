@@ -46,8 +46,8 @@ func (crypter *OpenPGPCrypter) IsUsed() bool {
 func (crypter *OpenPGPCrypter) ConfigureGPGCrypter() {
 	crypter.configured = true
 	crypter.keyRingId = GetKeyRingId()
-	crypter.pubKeyPath := GetGpgPublicKeyPath()
-	crypter.secretKeyPath := GetGpgSecretKeyPath()
+	crypter.pubKeyPath = GetGpgPublicKeyPath()
+	crypter.secretKeyPath = GetGpgSecretKeyPath()
 	crypter.armed = len(crypter.keyRingId) != 0 || len(crypter.pubKeyPath) != 0 || len(crypter.secretKeyPath) != 0
 }
 
