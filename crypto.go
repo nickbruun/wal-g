@@ -27,7 +27,7 @@ type Crypter interface {
 // to extract interface
 type OpenPGPCrypter struct {
 	configured, armed bool
-	keyRingId         string
+	keyRingId, pubKeyPath, secretKeyPath string
 
 	pubKey    openpgp.EntityList
 	secretKey openpgp.EntityList
@@ -46,7 +46,9 @@ func (crypter *OpenPGPCrypter) IsUsed() bool {
 func (crypter *OpenPGPCrypter) ConfigureGPGCrypter() {
 	crypter.configured = true
 	crypter.keyRingId = GetKeyRingId()
-	crypter.armed = len(crypter.keyRingId) != 0
+	crypter.pubKeyPath := GetGpgPublicKeyPath()
+	crypter.secretKeyPath := GetGpgSecretKeyPath()
+	crypter.armed = len(crypter.keyRingId) != 0 || len(crypter.pubKeyPath) != 0 || len(crypter.secretKeyPath) != 0
 }
 
 // ErrCrypterUseMischief happens when crypter is used before initialization
@@ -58,7 +60,7 @@ func (crypter *OpenPGPCrypter) Encrypt(writer io.WriteCloser) (io.WriteCloser, e
 		return nil, ErrCrypterUseMischief
 	}
 	if crypter.pubKey == nil {
-		armour, err := getPubRingArmour(crypter.keyRingId)
+		armour, err := getPubRingArmour(crypter.keyRingId, crypter.pubKeyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +121,7 @@ func (crypter *OpenPGPCrypter) Decrypt(reader io.ReadCloser) (io.Reader, error) 
 		return nil, ErrCrypterUseMischief
 	}
 	if crypter.secretKey == nil {
-		armour, err := getSecretRingArmour(crypter.keyRingId)
+		armour, err := getSecretRingArmour(crypter.keyRingId, crypter.secretKeyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -144,6 +146,16 @@ func GetKeyRingId() string {
 	return os.Getenv("WALE_GPG_KEY_ID")
 }
 
+// GetGpgPublicKeyPath extracts path of public key to use from env variable
+func GetGpgPublicKeyPath() string {
+	return os.Getenv("WALE_GPG_PUBLIC_KEY_PATH")
+}
+
+// GetGpgSecretKeyPath extracts path of secret key to use from env variable
+func GetGpgSecretKeyPath() string {
+	return os.Getenv("WALE_GPG_SECRET_KEY_PATH")
+}
+
 const gpgBin = "gpg"
 
 // CachedKey is the data transfer object describing format of key ring cache
@@ -153,7 +165,11 @@ type CachedKey struct {
 }
 
 // Here we read armoured version of Key by calling GPG process
-func getPubRingArmour(keyId string) ([]byte, error) {
+func getPubRingArmour(keyId, pubKeyPath string) ([]byte, error) {
+	if pubKeyPath != "" {
+		return ioutil.ReadFile(pubKeyPath)
+	}
+
 	var cache CachedKey
 	var cacheFilename string
 
@@ -191,7 +207,11 @@ func getPubRingArmour(keyId string) ([]byte, error) {
 	return out, nil
 }
 
-func getSecretRingArmour(keyId string) ([]byte, error) {
+func getSecretRingArmour(keyId, secretKeyPath string) ([]byte, error) {
+	if secretKeyPath != "" {
+		return ioutil.ReadFile(secretKeyPath)
+	}
+
 	out, err := exec.Command(gpgBin, "-a", "--export-secret-key", keyId).Output()
 	if err != nil {
 		return nil, err
