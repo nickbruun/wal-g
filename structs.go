@@ -87,10 +87,11 @@ type Bundle struct {
 
 	tarballQueue     chan (TarBall)
 	parallelTarballs int
+	mutex            sync.Mutex
 }
 
 func (b *Bundle) StartQueue() {
-	b.parallelTarballs = getMaxUploadConcurrency(runtime.NumCPU())
+	b.parallelTarballs = getMaxUploadConcurrency(min(runtime.NumCPU(), 10))
 	b.tarballQueue = make(chan (TarBall), b.parallelTarballs)
 	for i := 0; i < b.parallelTarballs; i++ {
 		b.NewTarBall(false)
@@ -112,11 +113,11 @@ func (b *Bundle) FinishQueue() error {
 			continue
 		}
 		err := tb.CloseTar()
-		tb.AwaitUploads()
-
 		if err != nil {
 			return errors.Wrap(err, "TarWalker: failed to close tarball")
 		}
+		tb.AwaitUploads()
+
 		for k, v := range tb.GetFiles() {
 			files[k] = v
 		}
@@ -133,6 +134,9 @@ func (b *Bundle) EnqueueBack(tb TarBall, parallelOpInProgress *bool) {
 
 func (b *Bundle) CheckSizeAndEnqueueBack(tb TarBall) error {
 	if tb.Size() > b.MinSize {
+		b.mutex.Lock()
+		defer b.mutex.Unlock()
+
 		err := tb.CloseTar()
 		if err != nil {
 			return errors.Wrap(err, "TarWalker: failed to close tarball")
